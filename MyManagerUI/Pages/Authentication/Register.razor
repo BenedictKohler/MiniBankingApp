@@ -1,0 +1,123 @@
+﻿<!-- Registration page for users without an account -->
+
+@page "/register"
+@using System.Text.RegularExpressions;
+@using MyManagerUI.Services
+@inject IAuthenticationService AuthenticationService
+@inject NavigationManager NavigationManager
+@using MyManagerShared.Models
+
+<div class="container">
+    <h2 class="m-2">Register</h2>
+
+    <form>
+        <input class="m-2 form-control" placeholder="First name..." type="text" @bind="@fname" />
+        <input class="m-2 form-control" placeholder="Last name..." type="text" @bind="@lname" />
+
+        <input class="m-2 form-control" placeholder="Bank Number..." type="text" @bind="@bankNumber" />
+        <input class="m-2 form-control" placeholder="Email..." type="email" @bind="@email" />
+
+        <input class="m-2 form-control" placeholder="Password..." type="password" @bind="@password" />
+        <input class="m-2 form-control" placeholder="Confirm password..." type="password" @bind="@passwordConfirm" />
+    </form>
+
+    <button class="m-2 btn btn-success m-2" @onclick="handleRegistration">Register</button>
+
+    @if (ErrorMessage.Count > 0)
+    {
+        <h4 class="m-1">Please fix the following errors:</h4>
+        <ul>
+            @foreach (string error in ErrorMessage)
+            {
+                <li>@error</li>
+            }
+        </ul>
+    }
+
+</div>
+
+
+@code {
+    public List<string> ErrorMessage { get; set; } = new List<string>();
+
+    public string fname { get; set; } = "";
+    public string lname { get; set; } = "";
+    public string email { get; set; } = "";
+    public string password { get; set; } = "";
+    public string passwordConfirm { get; set; } = "";
+    public string bankNumber { get; set; } = "";
+
+    // Makes sure that all of the users information entered meets certain requirements
+    public async void handleRegistration()
+    {
+        ErrorMessage = new List<string>();
+
+        if (fname.Length < 1)
+            ErrorMessage.Add("First Name can't be empty");
+        if (lname.Length < 1)
+            ErrorMessage.Add("Last Name can't be empty");
+        await isValidBankNumber(bankNumber);
+        await isValidEmail(email);
+        if (password.Length < 6)
+            ErrorMessage.Add("Your password must contain more than 5 characters");
+        if (!password.Equals(passwordConfirm))
+            ErrorMessage.Add("Your passwords must match");
+
+        if (ErrorMessage.Count > 0)
+        {
+            StateHasChanged();
+        }
+        else
+        {
+            // Add entry to DB and change to main screen
+            User user = new User { FirstName = fname, LastName = lname, BankBalance = 0, BankNumber = Convert.ToInt32(bankNumber), Email = email, Password = password, DateJoined = DateTime.Now };
+            HttpResponseMessage message = await AuthenticationService.PostUser(user);
+            if (message.IsSuccessStatusCode)
+            {
+                AuthUser.SetUser(user); // Class to keep track of this user
+                NavigationManager.NavigateTo(NavigationManager.BaseUri + "home");
+            }
+
+        }
+
+    }
+    // Make sure that the fake bank number entered is not already in use and is appropriate
+    public async Task isValidBankNumber(string bankNumber)
+    {
+        if (bankNumber.Length < 5)
+            ErrorMessage.Add("Bank number must be more than 5 digits");
+        else
+        {
+            int tempBankNumber = 0;
+            try
+            {
+                tempBankNumber = Convert.ToInt32(bankNumber);
+            }
+            catch
+            {
+                ErrorMessage.Add("The bank number must only contain digits");
+                return;
+            }
+            User theUser = await AuthenticationService.GetUserByBankNumber(tempBankNumber);
+            // Check if a user with this bank number already exists
+            if (!theUser.Email.Equals(""))
+            {
+                ErrorMessage.Add("The Bank Number is already in use. Please enter a different one.");
+            }
+        }
+    }
+
+    public async Task isValidEmail(string email)
+    {
+        Regex regex = new Regex(@"^([a-zA-Z0-9_\-\.]+)@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.)|(([a-zA-Z0-9\-]+\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\]?)$");
+        if (regex.IsMatch(email))
+        {
+            User tempUser = await AuthenticationService.GetUserByEmail(email);
+            if (!tempUser.Email.Equals(""))
+                ErrorMessage.Add("The email address given is already in use");
+        }
+        else
+            ErrorMessage.Add("The email address is not valid");
+    }
+
+}

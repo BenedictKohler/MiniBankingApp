@@ -1,0 +1,147 @@
+﻿<!-- Allows users to view and filter previous transactions made -->
+
+@page "/pasttransactions"
+
+@using MyManagerUI.Services
+@inject NavigationManager NavigationManager
+@inject ITransactionService TransactionService
+@using MyManagerShared.Models
+
+
+@if (!AuthUser.IsAuthenticated())
+{
+    NavigationManager.NavigateTo(NavigationManager.BaseUri + "/forbidden");
+}
+else
+{
+
+<div class="container" style="text-align:center">
+
+    <h3>Previous Transactions</h3>
+
+    <div style="text-align:left" class="dropdown my-2">
+        <button type="button" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">@SortValue</button>
+        <div class="dropdown-menu">
+            <a class="dropdown-item" @onclick="@Newest">Most Recent</a>
+            <a class="dropdown-item" @onclick="@Oldest">Oldest</a>
+            <a class="dropdown-item" @onclick="@LargestAmount">Largest Amount</a>
+            <a class="dropdown-item" @onclick="@OutgoingPayments">Payments Made</a>
+            <a class="dropdown-item" @onclick="@IncomingPayments">Payments Received</a>
+            <a class="dropdown-item" @onclick="@Withdrawals">Withdrawals</a>
+            <a class="dropdown-item" @onclick="@Deposits">Deposits</a>
+        </div>
+    </div>
+
+    <div style="text-align:left">
+        <input type="text" placeholder="Find by content..." @bind="@FindValue" />
+        <button class="btn btn-primary" type="button" @onclick="@FindByContent">Find</button>
+    </div>
+
+    @foreach (Transaction trans in PrevTransactions)
+    {
+        @if (trans.Description.Equals("Deposit into account") && SortValue.Equals("Deposits"))
+        {
+            <div class="my-3 card">
+                <div class="card-body">Deposit of $@trans.Amount.ToString() at @trans.TransactionDate.ToString()</div>
+            </div>
+        }
+        else if (trans.Description.Equals("Withdrawal from account") && SortValue.Equals("Withdrawals"))
+        {
+            <div class="my-3 card">
+                <div class="card-body">Withdrawal of $@trans.Amount.ToString() at @trans.TransactionDate.ToString()</div>
+            </div>
+        }
+        else
+        {
+            if (!(trans.Description.Equals("Withdrawal from account") || trans.Description.Equals("Deposit into account")))
+            {
+                <div class="my-3 card">
+                    <div class="card-header">$@trans.Amount.ToString() sent to @trans.ReceiverName</div>
+                    <div class="card-body">@trans.Description</div>
+                    <div class="card-footer">Date: @trans.TransactionDate.ToString()</div>
+                </div>
+            }
+        }
+    }
+</div>
+}
+
+
+
+@code {
+
+    List<Transaction> PrevTransactions { get; set; } = new List<Transaction>();
+    public string FindValue { get; set; } = "";
+    public string SortValue { get; set; } = "Sort By";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthUser.IsAuthenticated())
+        {
+            PrevTransactions = (await TransactionService.GetTransactionsByUser(AuthUser.GetUserID())).OrderByDescending(t => t.TransactionDate).ToList();
+            StateHasChanged();
+        }
+    }
+
+    // Allows user to find  transactions by text within the description
+    public async void FindByContent()
+    {
+        PrevTransactions = (await TransactionService.GetTransactionsByUser(AuthUser.GetUserID()))
+            .Where(t => t.Description.Contains(FindValue)).OrderByDescending(t => t.TransactionDate).ToList();
+        StateHasChanged();
+    }
+
+    public async void Newest()
+    {
+        PrevTransactions = (await TransactionService.GetTransactionsByUser(AuthUser.GetUserID())).OrderByDescending(t => t.TransactionDate).ToList();
+        SortValue = "Most Recent";
+        StateHasChanged();
+    }
+
+    public async void Oldest()
+    {
+        PrevTransactions = (await TransactionService.GetTransactionsByUser(AuthUser.GetUserID())).OrderBy(t => t.TransactionDate).ToList();
+        SortValue = "Oldest";
+        StateHasChanged();
+    }
+
+    public async void LargestAmount()
+    {
+        PrevTransactions = (await TransactionService.GetTransactionsByUser(AuthUser.GetUserID())).OrderByDescending(t => t.Amount).ToList();
+        SortValue = "Largest Amount";
+        StateHasChanged();
+    }
+
+    public async void OutgoingPayments()
+    {
+        PrevTransactions = (await TransactionService.GetTransactionsByUser(AuthUser.GetUserID()))
+            .Where(t => t.SenderID == AuthUser.GetUserID()).OrderByDescending(t => t.TransactionDate).ToList();
+        SortValue = "Payments Made";
+        StateHasChanged();
+    }
+
+    public async void IncomingPayments()
+    {
+        PrevTransactions = (await TransactionService.GetTransactionsByUser(AuthUser.GetUserID()))
+            .Where(t => t.ReceiverID == AuthUser.GetUserID()).OrderByDescending(t => t.TransactionDate).ToList();
+        SortValue = "Payments Received";
+        StateHasChanged();
+    }
+
+    public async void Withdrawals()
+    {
+        PrevTransactions = (await TransactionService.GetTransactionsByUser(AuthUser.GetUserID()))
+            .Where(t => t.Description.Equals("Withdrawal from account")).OrderByDescending(t => t.TransactionDate).ToList();
+        SortValue = "Withdrawals";
+        StateHasChanged();
+    }
+
+    public async void Deposits()
+    {
+        PrevTransactions = (await TransactionService.GetTransactionsByUser(AuthUser.GetUserID()))
+            .Where(t => t.Description.Equals("Deposit into account")).OrderByDescending(t => t.TransactionDate).ToList();
+        SortValue = "Deposits";
+        StateHasChanged();
+    }
+
+}

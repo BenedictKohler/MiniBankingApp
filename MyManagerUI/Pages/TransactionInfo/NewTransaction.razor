@@ -1,0 +1,194 @@
+﻿<!-- Allows a user to make a payment to another user -->
+
+@page "/newtransaction"
+
+@using MyManagerUI.Services
+@inject NavigationManager NavigationManager
+@inject ITransactionService TransactionService
+@inject IAuthenticationService AuthenticationService
+@using MyManagerShared.Models
+
+@if (!AuthUser.IsAuthenticated())
+{
+    NavigationManager.NavigateTo(NavigationManager.BaseUri + "/forbidden");
+}
+else
+{
+<div class="container" style="text-align:center">
+    <h3 style="text-align:center">New Transaction</h3>
+
+    <div>
+        <h4 class="mt-2">Who is the payment to</h4>
+        <input placeholder="First name..." type="text" @bind="@receiverFirst" />
+        <input placeholder="Last name..." type="text" @bind="@receiverLast" />
+        <input placeholder="Their Bank number..." type="text" @bind="@receiverBankNumber" />
+    </div>
+    <div>
+        <h4>Details</h4>
+        <textarea class="form-control mb-4" placeholder="Description..." @bind="@Description"></textarea>
+        <input placeholder="Amount..." type="text" @bind="@Amount" />
+        <input placeholder="Your Bank number..." type="text" @bind="@senderBankNumber" />
+    </div>
+    <br />
+    <button class="btn btn-block btn-success mb-2" @onclick="handleTransaction">Make Transaction</button>
+
+    @if (ErrorMessage.Count > 0)
+    {
+        <div class="mt-2" style="text-align:left">
+            <h4>Please fix the following errors:</h4>
+            <ul>
+                @foreach (string error in ErrorMessage)
+                {
+                    <li>@error</li>
+                }
+            </ul>
+        </div>
+    }
+
+    <!--Pop up to confirm the payment-->
+    @if (success)
+    {
+        <!-- The Modal -->
+        <div class="modal fade show d-block mt-4" tabindex="-1" role="dialog">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h4 class="modal-title">Complete Transaction</h4>
+                        <button type="button" class="close" @onclick="@Close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">×</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to complete this transaction?</p>
+                        <button type="button" class="btn btn-danger" @onclick="@haltTransaction">No</button>
+                        <button type="button" class="btn btn-success" @onclick="@completeTransaction">Yes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+</div>
+
+}
+
+
+
+@code {
+
+    public List<string> ErrorMessage { get; set; } = new List<string>();
+    public bool success { get; set; } = false;
+
+    // Reciever's details
+    public string receiverFirst { get; set; } = "";
+    public string receiverLast { get; set; } = "";
+    public string receiverBankNumber { get; set; } = "";
+
+    // Current user's details
+    public string senderBankNumber { get; set; } = "";
+    public string Amount { get; set; } = "";
+    public string Description { get; set; } = "";
+
+    public double tempAmount { get; set; }
+    public int recBankNum { get; set; }
+
+    public User OtherUser { get; set; }
+
+    public void Close()
+    {
+        success = false;
+        StateHasChanged();
+    }
+
+    // Make sure that all fields entered are correct
+    public async void handleTransaction()
+    {
+        ErrorMessage = new List<string>();
+
+        if (receiverFirst.Equals(""))
+            ErrorMessage.Add("Receiver needs a first name");
+        if (receiverLast.Equals(""))
+            ErrorMessage.Add("Receiver needs a last name");
+        if (receiverBankNumber.Equals(""))
+            ErrorMessage.Add("Receiver needs a bank number");
+        if (receiverBankNumber.Equals(Convert.ToString(AuthUser.GetBankNumber())))
+            ErrorMessage.Add("You can't pay yourself");
+        if (!(senderBankNumber.Equals(AuthUser.GetBankNumber().ToString())))
+            ErrorMessage.Add("Your bank number is incorrect");
+        if (Amount.Equals(""))
+            ErrorMessage.Add("You need an amount");
+
+        if (! Amount.Equals(""))
+        {
+            try
+            {
+                tempAmount = Convert.ToDouble(Amount);
+                if (AuthUser.GetBankBalance() - tempAmount < 0)
+                {
+                    ErrorMessage.Add("You have insufficient funds to make this payment");
+                }
+            }
+            catch
+            {
+                ErrorMessage.Add("You have entered an invalid amount");
+            }
+        }
+
+        if (! receiverBankNumber.Equals(""))
+        {
+            try
+            {
+                recBankNum = Convert.ToInt32(receiverBankNumber);
+            }
+            catch
+            {
+                ErrorMessage.Add("The receiver's bank number is invalid");
+            }
+        }
+
+        if (ErrorMessage.Count > 0)
+        {
+            StateHasChanged();
+        }
+        else
+        {
+            OtherUser = await AuthenticationService.GetUserByBankNumber(recBankNum);
+
+            if (OtherUser.Email.Equals(""))
+                ErrorMessage.Add("The bank number entered for the person receiving the payment is invalid");
+
+            if (ErrorMessage.Count > 0)
+                StateHasChanged();
+            else
+            {
+                success = true;
+                StateHasChanged();
+            }
+        }
+    }
+
+    public async void completeTransaction()
+    {
+        await TransactionService.PostTransaction(new Transaction
+        {
+            SenderID = AuthUser.GetUserID(),
+            ReceiverID = OtherUser.userID,
+            Amount = tempAmount,
+            ReceiverName = receiverFirst + " " + receiverLast,
+            Description = Description,
+            TransactionDate = DateTime.Now
+        });
+        OtherUser.BankBalance += tempAmount;
+        AuthUser.UpdateBalance(-tempAmount);
+        await AuthenticationService.PutUser(OtherUser, OtherUser.userID);
+        await AuthenticationService.PutUser(AuthUser.GetCurrentUser(), AuthUser.GetUserID());
+        NavigationManager.NavigateTo(NavigationManager.BaseUri + "/home");
+    }
+
+    public void haltTransaction()
+    {
+        success = false;
+        StateHasChanged();
+    }
+
+}

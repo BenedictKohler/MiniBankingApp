@@ -1,0 +1,56 @@
+﻿<!-- This is the Login page-->
+
+@page "/"
+
+@using MyManagerShared.Models
+@using MyManagerUI.Services
+@inject NavigationManager NavigationManager
+@inject IAuthenticationService AuthenticationService
+
+<div class="container">
+    <h2 class="m-2">Login</h2>
+
+    <input placeholder="Email..." class="input-group m-2" type="email" @bind="email" />
+    <input placeholder="Password..." class="input-group m-2" type="password" @bind="password" />
+    <button class="btn btn-success m-2" @onclick="handleLogin">Login</button>
+
+    <p class="m-2">Don't have an account? <a href="register">Create one!</a></p>
+
+    @if (!ErrorMessage.Equals(""))
+    {
+        <h4 class="m-2"><strong style="color:red;">Error: </strong>@ErrorMessage</h4>
+    }
+</div>
+
+@code {
+
+    public string ErrorMessage { get; set; } = "";
+
+    public string email { get; set; } = "";
+    public string password { get; set; } = "";
+
+    // Makes sure that all of the users details entered are valid
+    public async void handleLogin()
+    {
+        if (email.Equals(""))
+        {
+            ErrorMessage = "You must enter an email address.";
+            StateHasChanged();
+            return;
+        }
+        User user = await AuthenticationService.GetUserByEmail(email);
+
+        if (user.Password.Length < 1)
+            ErrorMessage = "The email you provided could not be found. Please recheck it or create an account.";
+        else if (!user.Password.Equals(password))
+            ErrorMessage = "The password that you entered is invalid.";
+        else
+        {
+            AuthUser.SetUser(user); // Class to keep track of this logged in user
+            NavigationManager.NavigateTo(NavigationManager.BaseUri + "home");
+        }
+
+
+        StateHasChanged();
+    }
+}

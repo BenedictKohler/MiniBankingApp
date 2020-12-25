@@ -1,0 +1,75 @@
+﻿<!-- This is the main page that users are routed to after loggin in -->
+<!-- It displays a few previous transactions and their account details -->
+
+@page "/home"
+
+@using MyManagerUI.Services
+@using MyManagerShared.Models
+@inject NavigationManager NavigationManager
+@inject ITransactionService TransactionService
+@inject IAuthenticationService AuthenticationService
+
+
+
+@if (!AuthUser.IsAuthenticated())
+{
+    NavigationManager.NavigateTo(NavigationManager.BaseUri + "/forbidden");
+}
+else
+{
+<div class="container">
+    <h3 style="text-align:center">Welcome back @AuthUser.GetFirstName() @AuthUser.GetLastName()</h3>
+
+    <h4 style="text-align:left">Recent Transactions:</h4>
+    @foreach (Transaction trans in transactions)
+    {
+        @if (trans.Description.Equals("Deposit into account"))
+        {
+            <div class="my-3 card">
+                <div class="card-body">Deposit of $@trans.Amount.ToString() at @trans.TransactionDate.ToString()</div>
+            </div>
+        }
+        else if (trans.Description.Equals("Withdrawal from account"))
+        {
+            <div class="my-3 card">
+                <div class="card-body">Withdrawal of $@trans.Amount.ToString() at @trans.TransactionDate.ToString()</div>
+            </div>
+        }
+        else
+        {
+            <div class="my-3 card">
+                <div class="card-header">$@trans.Amount.ToString() sent to @trans.ReceiverName</div>
+                <div class="card-body">@trans.Description</div>
+                <div class="card-footer">Date: @trans.TransactionDate.ToString()</div>
+            </div>
+        }
+
+    }
+
+    <div class="mt-4">
+        <h4>Banking Details:</h4>
+        <p>Current bank balance: @AuthUser.GetBankBalance()</p>
+        <p>Joining date: @AuthUser.GetDateJoined()</p>
+        <p>Bank number: @AuthUser.GetBankNumber()</p>
+    </div>
+</div>
+}
+
+@code {
+    List<Transaction> transactions { get; set; } = new List<Transaction>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthUser.IsAuthenticated())
+        {
+            int id = AuthUser.GetUserID();
+            transactions = (await TransactionService.GetTransactions()).Where(t => t.ReceiverID == id || t.SenderID == id)
+                .OrderByDescending(t => t.TransactionDate).ToList();
+            int count = transactions.Count > 5 ? 5 : transactions.Count;
+            transactions = transactions.Take(count).ToList();
+        }
+    }
+
+}
+
+

@@ -1,0 +1,144 @@
+﻿<!-- Allows the user to add or remove money from their fake account -->
+
+@page "/depositwithdraw"
+
+@using MyManagerUI.Services
+@using MyManagerShared.Models
+@inject NavigationManager NavigationManager
+@inject ITransactionService TransactionService
+@inject IAuthenticationService AuthenticationService
+
+@if (!AuthUser.IsAuthenticated())
+{
+    NavigationManager.NavigateTo(NavigationManager.BaseUri + "/forbidden");
+}
+else
+{
+
+<div class="container">
+
+    <h3 style="text-align:center">Make Deposit or Withdrawal</h3>
+
+    <div class="dropdown m-2">
+        <button type="button" class="btn btn-block btn-primary dropdown-toggle" data-toggle="dropdown">@Type</button>
+        <div class="dropdown-menu">
+            <a class="dropdown-item" @onclick="@SetDeposit">Deposit</a>
+            <a class="dropdown-item" @onclick="@SetWithdrawal">Withdraw</a>
+        </div>
+    </div>
+
+    <div class="m-2">
+        <input type="text" class="input-group" @bind="@Amount" placeholder="Enter Amount..." />
+        <button type="button" class="btn btn-block btn-success mt-2" @onclick="@Transact">Make Transaction</button>
+        @if (!ErrorMessage.Equals(""))
+        {
+            <h4 class="mt-3">@if (!ErrorMessage.ToLower().Contains("success"))
+            {
+                <strong>Error: </strong>
+            }
+            @ErrorMessage</h4>
+        }
+    </div>
+
+</div>
+
+}
+
+@code {
+    public string Amount { get; set; } = "";
+
+    public string Type { get; set; } = "Select Type";
+
+    public string ErrorMessage { get; set; } = "";
+
+    public void SetDeposit() {
+        Type = "Deposit";
+        StateHasChanged();
+    }
+
+    public void SetWithdrawal() {
+        Type = "Withdraw";
+        StateHasChanged();
+    }
+
+    public async void Transact()
+    {
+        if (Type.Equals("Select Type"))
+        {
+            ErrorMessage = "Please select the type of transaction first";
+            StateHasChanged();
+            return;
+        } else if (Type.Equals("Deposit"))
+        {
+            if (Amount.Equals(""))
+            {
+                ErrorMessage = "You must enter an amount to deposit";
+                StateHasChanged();
+                return;
+            }
+            double tempAmt = 0;
+            try
+            {
+                tempAmt = Convert.ToDouble(Amount);
+            } catch
+            {
+                ErrorMessage = "Invalid Amount to Deposit";
+                StateHasChanged();
+                return;
+            }
+            AuthUser.UpdateBalance(tempAmt);
+            await AuthenticationService.PutUser(AuthUser.GetCurrentUser(), AuthUser.GetUserID());
+            await TransactionService.PostTransaction(new Transaction
+            {
+                Description = "Deposit into account",
+                Amount = tempAmt,
+                ReceiverID = AuthUser.GetUserID(),
+                TransactionDate = DateTime.Now,
+                SenderID = AuthUser.GetUserID(),
+                ReceiverName = AuthUser.GetFirstName() + AuthUser.GetLastName()
+            });
+            ErrorMessage = "Deposit Successful!";
+            StateHasChanged();
+        } else
+        {
+            if (Amount.Equals(""))
+            {
+                ErrorMessage = "You must enter an amount to withdraw";
+                StateHasChanged();
+                return;
+            }
+            double tempAmt = 0;
+            try
+            {
+                tempAmt = Convert.ToDouble(Amount);
+            }
+            catch
+            {
+                ErrorMessage = "Invalid Amount to Withdraw";
+                StateHasChanged();
+                return;
+            }
+            if (AuthUser.GetBankBalance() - tempAmt < 0)
+            {
+                ErrorMessage = "You have insufficient funds to make this withdrawal";
+                StateHasChanged();
+                return;
+            }
+            AuthUser.UpdateBalance(-tempAmt);
+            await AuthenticationService.PutUser(AuthUser.GetCurrentUser(), AuthUser.GetUserID());
+            await TransactionService.PostTransaction(new Transaction
+            {
+                Description = "Withdrawal from account",
+                Amount = tempAmt,
+                ReceiverID = AuthUser.GetUserID(),
+                TransactionDate = DateTime.Now,
+                SenderID = AuthUser.GetUserID(),
+                ReceiverName = AuthUser.GetFirstName() + AuthUser.GetLastName()
+            });
+            ErrorMessage = "Withdrawal Successful";
+            StateHasChanged();
+        }
+
+    }
+
+}
